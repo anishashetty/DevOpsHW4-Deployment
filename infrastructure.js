@@ -6,9 +6,21 @@ var redis = require('redis');
 
 var GREEN = 'http://127.0.0.1:5060';
 var BLUE  = 'http://127.0.0.1:9090';
-var clientBlue = redis.createClient(6379, '127.0.0.1', {})
-var clientGreen = redis.createClient(6380, '127.0.0.1', {})
+
+var mirroring = process.argv[2];
+console.log ("arg 2: "+ process.argv[2]);
+if(mirroring == 1){
+  mirroring = true
+}
+else
+  mirroring = false;
+// if(mirroring)
+// console.log("mirroring on")
+// else
+// console.log("mirroring off")
+
 var TARGET = BLUE;
+var prevTARGET = GREEN;
 
 var infrastructure =
 {
@@ -21,19 +33,44 @@ var infrastructure =
     var server  = http.createServer(function(req, res)
     {
       if(req.url == '/switch'){
+        //if mirroring is off --> migrate queue contents on /switch
+      //  if(mirroring == false){
+                if(TARGET == BLUE){
+                TARGET=GREEN
+                prevTARGET = BLUE
 
-        if(TARGET == BLUE){
+                if(mirroring == false){
+                var clientBlue = redis.createClient(6379, '127.0.0.1', {})
+                clientBlue.migrate('127.0.0.1',6380,'items', 0, 10000, "replace");
+              }
 
-        TARGET=GREEN
-        //
+               }
+                else{
+                TARGET=BLUE
+                prevTARGET = GREEN;
+
+                if(mirroring == false){
+                var clientGreen = redis.createClient(6380, '127.0.0.1', {})
+                clientGreen.migrate('127.0.0.1',6379,'items', 0, 10000, "replace");
+              }
+              }
+          //}
+
       }
-        else{
-        TARGET=BLUE
-        //
+      if(mirroring){
+                  if(req.method == 'GET'){
+                  req.pipe(request.get(prevTARGET+req.url));
+                  }
+                  else if(req.method = 'POST'){
+                  req.pipe(request.post(prevTARGET+req.url));
+                  }
+
+
       }
-      }
-      console.log('TARGET: '+TARGET)
+
+      console.log('TARGET: '+TARGET+req.url)
       proxy.web( req, res, {target: TARGET } );
+
     });
     server.listen(8080);
 
